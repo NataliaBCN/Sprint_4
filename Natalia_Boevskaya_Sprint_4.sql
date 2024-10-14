@@ -200,8 +200,11 @@ FROM transactions join numbers
 ;
 
 -- el numero de ventas de cada producto
-SELECT p.id, p.product_name, count(transaction_id) as num_sold
-from  product_sold t
-inner join products p on t.product_id = p.id
-group by p.id, p.product_name
+SELECT p.id, product_name, count(ps.transaction_id) as num_sold
+from  product_sold ps
+inner join products p on product_id = p.id
+inner join transactions t on transaction_id=t.id
+where declined=0
+group by p.id, product_name
 order by num_sold desc;
+
