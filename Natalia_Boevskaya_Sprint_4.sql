@@ -1,4 +1,4 @@
-CREATE SCHEMA `transactions_new` DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci ;
+ CREATE SCHEMA `transactions_new` DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci ;
 -- utf8 nos permite usar caracteres con acentos (como Québec City)
 
 USE  transactions_new;
@@ -114,8 +114,6 @@ LINES TERMINATED BY '\r\n'
 IGNORE 1 LINES
 ;
 
-SET FOREIGN_KEY_CHECKS=0;
-
 ALTER TABLE transactions
 add foreign key(card_id) references credit_cards(id),
 add foreign key(business_id) references companies(company_id),
@@ -123,14 +121,21 @@ add foreign key(user_id) references users(id);
 
 
 -- *** NIVEL 1 *** EJ 1 ***
+-- La solución utilizando subconsulta, como solicitado
 -- Usuarios con 30 y mas transacciones 
-SELECT u.*, count(t.id) as num_transactions
-FROM transactions t 
-		left outer join users u on t.user_id=u.id
--- WHERE declined=0
-GROUP BY u.id
-HAVING num_transactions>=30
+-- tabla user y para cada usuario contamos la cantidad de transaciones
+SELECT *, (select count(user_id) from transactions where user_id = users.id) as num_transactions
+FROM users
+WHERE id in(
+		select user_id 
+        from transactions
+        group by user_id
+        having count(user_id) > 30
+        order by count(user_id) desc
+)
+order by num_transactions desc;
 ;
+
 
 -- *** NIVEL 1 *** EJ 2 ***
 SELECT c.company_name, cc.iban, round(avg(t.amount),2) as avg_transaction
@@ -173,6 +178,15 @@ FROM cc_state
 WHERE cc_state='Activa'
 ;
 -- *** NIVEL 3 *** EJ 1 ***
+
+CREATE TABLE IF NOT EXISTS product_sold 
+(transaction_id VARCHAR(50),
+product_id VARCHAR(5),
+PRIMARY KEY (transaction_id, product_id),
+FOREIGN KEY (transaction_id) references transactions(id),
+FOREIGN KEY (product_id) references products(id));
+/*
+-- *** OPCION 1 *** con substring_index
 -- creamos una tabla temporal que consiste de un campo con los numeros de 1 a 10
 -- CTE (common table expression) create temporary result set
 -- RECURSIVE for generating serie of numbers
@@ -185,19 +199,22 @@ CREATE TEMPORARY TABLE numbers  WITH RECURSIVE  cte AS
 )
 SELECT * FROM cte;
 
-CREATE TABLE IF NOT EXISTS product_sold 
-(transaction_id VARCHAR(50),
-product_id VARCHAR(5),
-PRIMARY KEY (transaction_id, product_id),
-FOREIGN KEY (transaction_id) references transactions(id),
-FOREIGN KEY (product_id) references products(id));
-
 INSERT INTO product_sold (transaction_id, product_id)
 SELECT  id as transaction_id,
 	trim(substring_index( substring_index(product_ids, ',', n), ',', -1 )) as product_id 
 FROM transactions join numbers 
 	on  char_length(product_ids) - char_length(replace(product_ids, ',', ''))+1 >= n 
 ;
+
+
+*/
+
+-- *** OPCION 2 *** con find_in_set
+INSERT INTO product_sold (transaction_id, product_id)
+SELECT t.id, p.id
+FROM transactions t
+inner join products p on find_in_set(p.id, replace(t.product_ids,', ',','))
+where declined = 0;
 
 -- el numero de ventas de cada producto
 SELECT p.id, product_name, count(ps.transaction_id) as num_sold
@@ -207,4 +224,3 @@ inner join transactions t on transaction_id=t.id
 where declined=0
 group by p.id, product_name
 order by num_sold desc;
-
